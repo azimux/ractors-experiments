@@ -29,11 +29,15 @@ def benchmark(method_name, silent: false)
     GC.enable
   end
 
+  elapsed_time = result.real
+
   unless silent
     puts "answer: #{answer.to_s[0...10]}...#{answer.to_s[-10...-1]}"
-    puts "%.4f seconds" % result.real
+    puts "%.4f seconds" % elapsed_time
     puts
   end
+
+  elapsed_time
 end
 
 def direct_benchmark
@@ -125,13 +129,20 @@ end
 benchmarks = [:direct, :ractor, :thread]
 
 puts "warming up..."
+
 benchmarks.each do |method_name|
   benchmark(method_name, silent: true)
 end
 benchmarks.reverse.each do |method_name|
   benchmark(method_name, silent: true)
 end
+
 puts "ok here we go..."
-benchmarks.each do |method_name|
-  benchmark(method_name)
-end
+
+benchmark(:direct)
+ractor_elapsed_time = benchmark(:ractor)
+thread_elapsed_time = benchmark(:thread)
+
+ractors_speedup = 1 - (ractor_elapsed_time / thread_elapsed_time)
+
+puts "Ractors speedup: %d%%" % (100 * ractors_speedup).round
