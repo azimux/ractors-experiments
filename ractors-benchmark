@@ -1,0 +1,137 @@
+#!/usr/bin/env ruby
+
+require "benchmark"
+require "bigdecimal"
+# require "pry"
+
+srand(0)
+
+CONCURRENCY = 4
+RANDOM_NUMBERS = 10_000.times.map { BigDecimal(rand * 2.78) }
+
+def benchmark(method_name, silent: false)
+  answer = nil
+
+  unless silent
+    puts "benchmarking #{method_name}"
+  end
+
+  GC.start
+  GC.compact
+
+  begin
+    GC.disable
+
+    result = Benchmark.measure do
+      answer = send("#{method_name}_benchmark")
+    end
+  ensure
+    GC.enable
+  end
+
+  unless silent
+    puts "answer: #{answer.to_s[0...10]}...#{answer.to_s[-10...-1]}"
+    puts "%.4f seconds" % result.real
+    puts
+  end
+end
+
+def direct_benchmark
+  queues = CONCURRENCY.times.map { Queue.new }
+
+  RANDOM_NUMBERS.each.with_index do |number, index|
+    queues[index % CONCURRENCY] << number
+  end
+
+  queues.each { |queue| queue << :stop }
+
+  products = []
+
+  queues.each do |queue|
+    product = 1
+
+    loop do
+      number = queue.pop
+
+      break if number == :stop
+
+      product *= number
+    end
+
+    products << product
+  end
+
+  products.inject(:*)
+end
+
+def ractor_benchmark
+  ractors = CONCURRENCY.times.map do
+    Ractor.new do
+      product = 1
+
+      loop do
+        number = receive
+
+        break if number == :stop
+
+        product *= number
+      end
+
+      product
+    end
+  end
+
+  RANDOM_NUMBERS.each.with_index do |number, index|
+    ractors[index % CONCURRENCY] << number
+  end
+
+  ractors.each { it << :stop }
+
+  ractors.map(&:value).inject(:*)
+end
+
+def thread_benchmark
+  threads = CONCURRENCY.times.map do
+    queue = Queue.new
+
+    Thread.new do
+      product = 1
+
+      loop do
+        number = queue.pop
+
+        break if number == :stop
+
+        product *= number
+      end
+
+      product
+    end.tap do |thread|
+      thread.define_singleton_method(:queue) { queue }
+    end
+  end
+
+  RANDOM_NUMBERS.each.with_index do |number, index|
+    threads[index % CONCURRENCY].queue << number
+  end
+
+  threads.each { |thread| thread.queue << :stop }
+
+  threads.each(&:join)
+
+  threads.map(&:value).inject(:*)
+end
+
+benchmarks = [:direct, :ractor, :thread]
+
+puts "warming up..."
+benchmarks.each do |method_name|
+  benchmark(method_name, silent: true)
+end
+benchmarks.reverse.each do |method_name|
+  benchmark(method_name, silent: true)
+end
+puts "ok here we go..."
+benchmarks.each do |method_name|
+  benchmark(method_name)
+end
