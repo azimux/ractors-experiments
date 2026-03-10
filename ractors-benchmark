@@ -6,7 +6,7 @@ require "bigdecimal"
 
 srand(0)
 
-CONCURRENCY = 4
+CONCURRENCY = 3
 RANDOM_NUMBERS = 10_000.times.map { BigDecimal(rand * 2.78) }
 
 def benchmark(method_name, silent: false)
@@ -22,14 +22,12 @@ def benchmark(method_name, silent: false)
   begin
     GC.disable
 
-    result = Benchmark.measure do
+    elapsed_time = Benchmark.measure do
       answer = send("#{method_name}_benchmark")
-    end
+    end.real
   ensure
     GC.enable
   end
-
-  elapsed_time = result.real
 
   unless silent
     puts "answer: #{answer.to_s[0...10]}...#{answer.to_s[-10...-1]}"
@@ -121,9 +119,7 @@ def thread_benchmark
 
   threads.each { |thread| thread.queue << :stop }
 
-  threads.each(&:join)
-
-  threads.map(&:value).inject(:*)
+  threads.each(&:join).map(&:value).inject(:*)
 end
 
 benchmarks = [:direct, :ractor, :thread]
