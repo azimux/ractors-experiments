@@ -1,0 +1,9 @@
+#!/usr/bin/env ruby
+
+class Foo; end
+
+Foo.instance_eval { @foo = :baz }
+
+Ractor.new(Foo) do |klass|
+  klass.instance_eval { @foo = :bar }
+end.join

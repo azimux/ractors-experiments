@@ -1,0 +1,7 @@
+#!/usr/bin/env ruby
+
+Ractor.new do
+  class Foo
+    @foo = :bar
+  end
+end.join

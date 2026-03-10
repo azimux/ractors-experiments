@@ -1,0 +1,9 @@
+#!/usr/bin/env ruby
+
+Ractor.new do
+  Object.class_eval do
+    def foo = :bar
+  end
+end.join
+
+puts Object.foo

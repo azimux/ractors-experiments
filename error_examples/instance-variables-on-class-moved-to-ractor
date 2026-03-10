@@ -1,0 +1,11 @@
+#!/usr/bin/env ruby
+
+class Foo; end
+
+ractor = Ractor.new do
+  klass = receive
+  klass.instance_eval { @foo = :bar }
+end
+
+ractor.send(Foo, move: true)
+ractor.join

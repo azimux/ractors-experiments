@@ -1,0 +1,8 @@
+#!/usr/bin/env ruby
+
+o = Object.new
+puts "object_id outside ractor: #{o.object_id}"
+
+Ractor.new do
+  puts "object_id in ractor: #{receive.object_id}"
+end.send(o).join

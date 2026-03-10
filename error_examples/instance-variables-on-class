@@ -1,0 +1,5 @@
+#!/usr/bin/env ruby
+
+Ractor.new do
+  Object.class_eval { @foo = :bar }
+end.join
