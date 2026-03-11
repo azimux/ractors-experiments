@@ -11,22 +11,6 @@ CONCURRENCY = 3
 RANDOM_NUMBER_UPPER_BOUND = 2.78
 RANDOM_NUMBERS = 10_000.times.map { BigDecimal(rand * RANDOM_NUMBER_UPPER_BOUND) }
 
-module Benchmarkable
-  def do_it
-    product = 1
-
-    loop do
-      number = get
-
-      break if number == :stop
-
-      product *= number
-    end
-
-    product
-  end
-end
-
 def benchmark(method_name, silent: false)
   answer = nil
 
@@ -54,6 +38,22 @@ ensure
   GC.enable
 end
 
+module Benchmarkable
+  def do_it
+    product = 1
+
+    loop do
+      number = get
+
+      break if number == :stop
+
+      product *= number
+    end
+
+    product
+  end
+end
+
 class DirectProductizer
   include Benchmarkable
 
@@ -66,34 +66,6 @@ class DirectProductizer
   def get = queue.pop
   def <<(...) = queue.<<(...)
   def join = self.value = do_it
-end
-
-def direct_benchmark
-  productizers = CONCURRENCY.times.map do
-    DirectProductizer.new
-  end
-
-  RANDOM_NUMBERS.each.with_index do |number, index|
-    productizers[index % CONCURRENCY] << number
-  end
-
-  productizers.each { |productizer| productizer << :stop }
-
-  productizers.each(&:join).map(&:value).inject(:*)
-end
-
-def ractor_benchmark
-  ractors = CONCURRENCY.times.map do
-    RactorProductizer.new
-  end
-
-  RANDOM_NUMBERS.each.with_index do |number, index|
-    ractors[index % CONCURRENCY] << number
-  end
-
-  ractors.each { it << :stop }
-
-  ractors.map(&:value).inject(:*)
 end
 
 class RactorProductizer < Ractor
@@ -129,19 +101,21 @@ class ThreadProductizer < Thread
   def <<(...) = queue.<<(...)
 end
 
-def thread_benchmark
-  threads = CONCURRENCY.times.map do
-    ThreadProductizer.new
-  end
+def run_benchmark(productizer_class)
+  productizers = CONCURRENCY.times.map { productizer_class.new }
 
   RANDOM_NUMBERS.each.with_index do |number, index|
-    threads[index % CONCURRENCY] << number
+    productizers[index % CONCURRENCY] << number
   end
 
-  threads.each { |thread| thread << :stop }
+  productizers.each { |productizer| productizer << :stop }
 
-  threads.each(&:join).map(&:value).inject(:*)
+  productizers.each(&:join).map(&:value).inject(:*)
 end
+
+def direct_benchmark = run_benchmark(DirectProductizer)
+def ractor_benchmark = run_benchmark(RactorProductizer)
+def thread_benchmark = run_benchmark(ThreadProductizer)
 
 benchmarks = [:direct, :ractor, :thread]
 
