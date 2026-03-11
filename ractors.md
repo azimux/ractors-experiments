@@ -137,3 +137,7 @@ irb(main):013>
 Ractor#value seems to block but Thread#value doesn't??
 
 # Benchmarks
+
+# Other random interesting tidbits
+
+## Is the random number upper bound just Math::E or related to it??

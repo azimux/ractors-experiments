@@ -7,7 +7,9 @@ require "bigdecimal"
 srand(0)
 
 CONCURRENCY = 3
-RANDOM_NUMBERS = 10_000.times.map { BigDecimal(rand * 2.78) }
+# Is this basically Math::E or related?? And just off a bit due to randomness?
+RANDOM_NUMBER_UPPER_BOUND = 2.78
+RANDOM_NUMBERS = 10_000.times.map { BigDecimal(rand * RANDOM_NUMBER_UPPER_BOUND) }
 
 def benchmark(method_name, silent: false)
   answer = nil
@@ -19,15 +21,11 @@ def benchmark(method_name, silent: false)
   GC.start
   GC.compact
 
-  begin
-    GC.disable
+  GC.disable
 
-    elapsed_time = Benchmark.measure do
-      answer = send("#{method_name}_benchmark")
-    end.real
-  ensure
-    GC.enable
-  end
+  elapsed_time = Benchmark.measure do
+    answer = send("#{method_name}_benchmark")
+  end.real
 
   unless silent
     puts "answer: #{answer.to_s[0...10]}...#{answer.to_s[-10...-1]}"
@@ -36,6 +34,8 @@ def benchmark(method_name, silent: false)
   end
 
   elapsed_time
+ensure
+  GC.enable
 end
 
 def direct_benchmark
