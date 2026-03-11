@@ -13,3 +13,6 @@ Naming/FileName:
 
 Lint/ConstantDefinitionInBlock:
   Enabled: false
+
+Style/OneClassPerFile:
+  Enabled: false

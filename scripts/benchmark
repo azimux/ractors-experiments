@@ -11,6 +11,30 @@ CONCURRENCY = 3
 RANDOM_NUMBER_UPPER_BOUND = 2.78
 RANDOM_NUMBERS = 10_000.times.map { BigDecimal(rand * RANDOM_NUMBER_UPPER_BOUND) }
 
+module Benchmarkable
+  def initialize(...)
+    super { do_it }
+  end
+
+  def do_it
+    product = 1
+
+    loop do
+      number = get
+
+      break if number == :stop
+
+      product *= number
+    end
+
+    product
+  end
+
+  def get
+    raise "subclass responsibility"
+  end
+end
+
 def benchmark(method_name, silent: false)
   answer = nil
 
@@ -92,25 +116,22 @@ def ractor_benchmark
   ractors.map(&:value).inject(:*)
 end
 
+class ThreadedProductizer < Thread
+  include Benchmarkable
+
+  attr_accessor :queue
+
+  def initialize(...)
+    self.queue = Queue.new
+    super
+  end
+
+  def get = queue.pop
+end
+
 def thread_benchmark
   threads = CONCURRENCY.times.map do
-    queue = Queue.new
-
-    Thread.new do
-      product = 1
-
-      loop do
-        number = queue.pop
-
-        break if number == :stop
-
-        product *= number
-      end
-
-      product
-    end.tap do |thread|
-      thread.define_singleton_method(:queue) { queue }
-    end
+    ThreadedProductizer.new
   end
 
   RANDOM_NUMBERS.each.with_index do |number, index|
