@@ -141,3 +141,29 @@ Ractor#value seems to block but Thread#value doesn't??
 # Other random interesting tidbits
 
 ## Is the random number upper bound just Math::E or related to it??
+
+## Initializing a ractor and a thread aren't quite the same
+
+Have to pass a block to Ractor.new but just need Thread#initialize to take a block.
+
+This has some implications for inheriting from Ractor versus inheriting from Thread.
+
+```ruby
+class MyThread < Thread
+  def initialize(...)
+    super { do_it }
+  end
+end
+```
+
+works, but
+
+```ruby
+class MyRactor < Ractor
+  def initialize(...)
+    super { do_it }
+  end
+end
+```
+
+does not because one has to attack .new instead of #initialize for Ractor.
