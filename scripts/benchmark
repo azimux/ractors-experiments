@@ -25,11 +25,6 @@ module Benchmarkable
 
     product
   end
-
-  def get = raise "subclass responsibility"
-  def <<(...) = raise "subclass responsibility"
-  def join = raise "subclass responsibility"
-  def value = raise "subclass responsibility"
 end
 
 def benchmark(method_name, silent: false)
@@ -59,49 +54,37 @@ ensure
   GC.enable
 end
 
+class DirectProductizer
+  include Benchmarkable
+
+  attr_accessor :value, :queue
+
+  def initialize
+    self.queue = Queue.new
+  end
+
+  def get = queue.pop
+  def <<(...) = queue.<<(...)
+  def join = self.value = do_it
+end
+
 def direct_benchmark
-  queues = CONCURRENCY.times.map { Queue.new }
+  productizers = CONCURRENCY.times.map do
+    DirectProductizer.new
+  end
 
   RANDOM_NUMBERS.each.with_index do |number, index|
-    queues[index % CONCURRENCY] << number
+    productizers[index % CONCURRENCY] << number
   end
 
-  queues.each { |queue| queue << :stop }
+  productizers.each { |productizer| productizer << :stop }
 
-  products = []
-
-  queues.each do |queue|
-    product = 1
-
-    loop do
-      number = queue.pop
-
-      break if number == :stop
-
-      product *= number
-    end
-
-    products << product
-  end
-
-  products.inject(:*)
+  productizers.each(&:join).map(&:value).inject(:*)
 end
 
 def ractor_benchmark
   ractors = CONCURRENCY.times.map do
-    Ractor.new do
-      product = 1
-
-      loop do
-        number = receive
-
-        break if number == :stop
-
-        product *= number
-      end
-
-      product
-    end
+    RactorProductizer.new
   end
 
   RANDOM_NUMBERS.each.with_index do |number, index|
@@ -113,20 +96,37 @@ def ractor_benchmark
   ractors.map(&:value).inject(:*)
 end
 
-class ThreadProductizer
+class RactorProductizer < Ractor
+  class << self
+    def new(...)
+      super { do_it }
+    end
+  end
+
   include Benchmarkable
 
-  attr_accessor :queue, :thread
+  def get = receive
+end
+
+class ThreadProductizer < Thread
+  class << self
+    def new(...)
+      super { Thread.current.do_it }
+    end
+  end
+
+  include Benchmarkable
+
+  attr_accessor :queue
 
   def initialize(...)
     self.queue = Queue.new
-    self.thread = Thread.new { do_it }
+
+    super
   end
 
   def get = queue.pop
   def <<(...) = queue.<<(...)
-  def join = thread.join
-  def value = thread.value
 end
 
 def thread_benchmark
