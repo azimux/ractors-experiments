@@ -17,7 +17,7 @@
 * [Benchmarks](#benchmarks)
 <!-- TOC -->
 
-# Ractors are (actors how did I not know??)
+# Ractors are actors! (how did I not know??)
 
 ## What's an actor?
 
@@ -28,12 +28,17 @@ concurrency issue in another ractor
 
 # Sending stuff to ractors...
 
-I prefer #<< over #send because I think of #send as the send-hack (which is technically #__send__ with
+## #send versus #<<
+
+I suppose prefer #<< over #send because I think of #send as the send-hack (which is technically #__send__ with
 #send being originally private but I think it's public now? was this originally something within Rails?)
+
+However, an oddity is if you're moving an object to a Ractor, then it would be `some_ractor.<<(some_object, move: true)`
+which seems kind of awkward.
 
 # Things that result in an error
 
-## Setting a class variable from a ractor
+## Setting a class instance variable from a ractor
 
 ```ruby
 Ractor.new do
