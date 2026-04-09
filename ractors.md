@@ -172,3 +172,50 @@ end
 ```
 
 does not because one has to attack .new instead of #initialize for Ractor.
+
+
+## Additional note... the value of self in a ractor block is the ractor class?? not the created instance??
+
+
+## wwwhwhhhaaaat?? Why does eval break but not define_method in this other case??
+
+## another issue...
+
+╭┨~/gitlocal/ruby/promises┠┨main┠─────────────────────────────────────────────────────────────────────────────────────────────────────────┨2026-04-06 09:13:04
+╰./example_scripts/doubler                                                                                                                                   
+/home/miles/gitlocal/ruby/promises/src/ractorized_object.rb:13: warning: Ractor API is experimental and may change in future versions of Ruby.
+20
+ractor is #<Ractor:#1 running> 16
+#<Thread:0x00007f3219a3ce90 run> terminated with exception (report_on_exception is true):
+./example_scripts/doubler:10:in 'Doubler#set': can not access instance variables of shareable objects from non-main Ractors (Ractor::IsolationError)
+from /home/miles/gitlocal/ruby/promises/src/ractorized_object.rb:26:in 'block (2 levels) in RactorizedObject.new'
+from /home/miles/gitlocal/ruby/promises/src/ractorized_object.rb:16:in 'Kernel#loop'
+from /home/miles/gitlocal/ruby/promises/src/ractorized_object.rb:16:in 'block in RactorizedObject.new'
+^C/home/miles/gitlocal/ruby/promises/src/ractorized_object/promise.rb:14:in 'Ractor::Port#receive': Interrupt
+from /home/miles/gitlocal/ruby/promises/src/ractorized_object/promise.rb:14:in 'RactorizedObject::Promise#value'
+from ./example_scripts/doubler:30:in '<main>'
+
+even if an object is shareable, the main ractor can't access its data? Hmm...
+
+# wrapping a method outside super doesn't work??
+
+# breaks coverage in simplecov?
+
+# strange bug in this branch:
+
+╭┨~/gitlocal/ractor-shack/ractorize┠┨bring-back-ractorized-object┠────────────────────────────────────────────────────────────────────────┨2026-04-09 16:31:03
+╰example_scripts/doubler                                                                                                                                     
+/home/miles/gitlocal/ractor-shack/ractorize/src/ractorized_object.rb:10: warning: Ractor API is experimental and may change in future versions of Ruby.
+example_scripts/doubler:25:in 'Ractor::MovedObject#method_missing': can not send any methods to a moved object (Ractor::MovedError)
+from example_scripts/doubler:25:in '<main>'
+╔╣~/gitlocal/ractor-shack/ractorize╠╣bring-back-ractorized-object╠════════════════════════════════════════════════════════════════════════╣2026-04-09 16:31:04
+╚       
+
+So this seems to mean that we cannot go with the RactorizedObject approach where we prepend a module to
+an existing object.
+
+That is because we need to move the object to the ractor. But if we move the object to the ractor, 
+then calling code doing stuff like doubler.set(10) will fail because of this error and not get a chance
+to send the message along to the ractor that will then invoke the overriden (original) method.
+
+Maybe proxy approach is best, then?
