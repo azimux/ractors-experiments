@@ -1,0 +1,90 @@
+#!/usr/bin/env ruby
+
+srand 0
+
+CONCURRENCY = 3
+RANDOM_NUMBERS = 10_000.times.map { rand * 2.78 }
+
+def direct = puts RANDOM_NUMBERS.inject(:*)
+
+def thread_batches
+  batches = RANDOM_NUMBERS.each_slice((RANDOM_NUMBERS.size / 3) + 1).to_a
+
+  threads = CONCURRENCY.times.map do |thread_index|
+    Thread.new do
+      batches[thread_index].inject(:*)
+    end
+  end
+
+  threads.each(&:join)
+  puts threads.map(&:value).inject(:*)
+end
+
+class ActorlikeThread < Thread
+  def initialize
+    @queue = Queue.new
+    super
+  end
+
+  def <<(message) = @queue << message
+  def receive = @queue.pop
+end
+
+def actorlike
+  actorlike_threads = CONCURRENCY.times.map do
+    ActorlikeThread.new do
+      Thread.current.instance_exec do
+        product = 1
+
+        loop do
+          number = receive
+          break if number == :stop
+
+          product *= number
+        end
+
+        product
+      end
+    end
+  end
+
+  RANDOM_NUMBERS.each.with_index do |number, index|
+    actorlike_threads[index % CONCURRENCY] << number
+  end
+
+  actorlike_threads.each { it << :stop }
+
+  actorlike_threads.each(&:join)
+  puts actorlike_threads.map(&:value).inject(:*)
+end
+
+def ractor
+  ractors = CONCURRENCY.times.map do
+    Ractor.new do
+      product = 1
+
+      loop do
+        number = receive
+        break if number == :stop
+
+        product *= number
+      end
+
+      product
+    end
+  end
+
+  RANDOM_NUMBERS.each.with_index do |number, index|
+    ractors[index % CONCURRENCY] << number
+  end
+
+  ractors.each { it << :stop }
+
+  ractors.each(&:join)
+  puts ractors.map(&:value).inject(:*)
+end
+
+algorithm = ARGV[0] || "direct"
+
+puts "running #{algorithm} benchmark"
+send(algorithm)

@@ -219,3 +219,35 @@ then calling code doing stuff like doubler.set(10) will fail because of this err
 to send the message along to the ractor that will then invoke the overriden (original) method.
 
 Maybe proxy approach is best, then?
+
+# When I send messages to a ractor, will they arrive in order?
+
+# Why is #method_missing in the moved error message?
+
+./scripts/passing-objects/moving:19:in 'Ractor::MovedObject#method_missing': can not send any methods to a moved object (Ractor::MovedError)
+from ./scripts/passing-objects/moving:19:in '<main>'
+
+# the "non-proxy problem"
+
+any approach to provide methods that delegate to a Ractor that ultimately call real methods
+on the same object seems to not work...
+
+The approach of moving "self" to the ractor and back doesn't seem to work since the
+reference to the object that is moved through the return port works, old references don't work.
+
+Not sure why? Flags in the Ruby "VALUE" reference?
+
+Also, if anything asyncronously accesses the object while it's moved to the other ractor, it fails. Internally,
+one catch MoveError and wait. But outside in the calling code this isn't an ergonomic solution.
+
+Not moving the object is tricky because we can't access instance variables from the Ractor that didn't
+create the object. This means we can't have a @__ractor__ to refrence it from the object and we can't make
+a "ractor = Ractor.current; target.define_method(:__ractor__) { ractor }" because this proc is considered
+not accessible from the outside ractor.
+
+# start off by explaining what ractors are
+## where relevant: CRuby due to its GIL
+# explain what problems they solve and how
+# examples:
+## cpu-bound work
+## race condition without semaphores

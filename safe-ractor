@@ -1,0 +1,21 @@
+#!/usr/bin/env ruby
+
+class SafeRactor < Ractor
+  class UnexpectedUnshareableMessage < StandardError; end
+
+  def initialize(*args)
+    unless args.all? { |arg| Ractor.shareable?(arg) }
+      raise UnexpectedUnshareableMessage, "Expected shareable arguments but got #{args}"
+    end
+
+    super
+  end
+
+  def <<(message)
+    unless Ractor.shareable?(message)
+      raise UnexpectedUnshareableMessage, "Expected a shareable message but got #{message}"
+    end
+
+    super
+  end
+end

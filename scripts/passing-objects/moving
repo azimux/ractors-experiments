@@ -1,0 +1,27 @@
+#!/usr/bin/env ruby
+
+class Foo
+  attr_accessor :bar, :ractor
+end
+
+foo = Foo.new
+puts foo.object_id
+foo.bar = "baz"
+foo.ractor = Ractor.new { sleep 10 }
+
+port = Ractor::Port.new
+
+Ractor.new do
+  receive => [f, return_port]
+  puts "in ractor"
+  puts f.bar
+  puts f.object_id
+  return_port.send([f], move: true)
+end.send([foo, port], move: true)
+
+# this works! But not assigning doesn't?? even though the object_id is the same??
+# foo = port.receive.first
+# this works! But not assigning doesn't?? even though the object_id is the same??
+port.receive.first
+puts foo.object_id
+puts foo.bar

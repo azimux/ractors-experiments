@@ -2,7 +2,9 @@
 
 require "benchmark"
 require "bigdecimal"
-# require "pry"
+
+require "pry"
+require "pry-byebug"
 
 srand(0)
 
@@ -11,34 +13,62 @@ CONCURRENCY = 3
 RANDOM_NUMBER_UPPER_BOUND = 2.78
 RANDOM_NUMBERS = 10_000.times.map { BigDecimal(rand * RANDOM_NUMBER_UPPER_BOUND) }
 
-def benchmark(method_name, silent: false)
-  answer = nil
-
-  unless silent
-    puts "benchmarking #{method_name}"
-  end
-
-  GC.start
-  GC.compact
-
-  GC.disable
-
-  elapsed_time = Benchmark.measure do
-    answer = send("#{method_name}_benchmark")
-  end.real
-
-  unless silent
-    puts "answer: #{answer.to_s[0...10]}...#{answer.to_s[-10...-1]}"
-    puts "%.4f seconds" % elapsed_time
-    puts
-  end
-
-  elapsed_time
-ensure
-  GC.enable
-end
+# You must implement #<<, #get, #join, #value, and a .new/#initialize that allows no arguments
 
 module Benchmarkable
+  class << self
+    def included(base)
+      base.extend ClassMethods
+    end
+  end
+
+  module ClassMethods
+    def benchmark(silent: false)
+      answer = nil
+
+      unless silent
+        puts "benchmarking #{name}"
+      end
+
+      GC.start
+      GC.compact
+
+      GC.disable
+
+      elapsed_time = Benchmark.measure do
+        answer = run
+      end.real
+
+      unless silent
+        puts "answer: #{answer.to_s[0...10]}...#{answer.to_s[-10...-1]}"
+        puts "%.4f seconds" % elapsed_time
+        puts
+      end
+
+      elapsed_time
+    ensure
+      GC.enable
+    end
+
+    private
+
+    def run
+      productizers = CONCURRENCY.times.map { new }
+
+      RANDOM_NUMBERS.each.with_index do |number, index|
+        productizers[index % CONCURRENCY] << number
+      rescue => e
+        binding.pry
+        raise
+      end
+
+      productizers.each { |productizer| productizer << :stop }
+
+      productizers.each(&:join).map(&:value).inject(:*)
+    end
+  end
+
+
   def do_it
     product = 1
 
@@ -101,38 +131,22 @@ class ThreadProductizer < Thread
   def <<(...) = queue.<<(...)
 end
 
-def run_benchmark(productizer_class)
-  productizers = CONCURRENCY.times.map { productizer_class.new }
-
-  RANDOM_NUMBERS.each.with_index do |number, index|
-    productizers[index % CONCURRENCY] << number
-  end
-
-  productizers.each { |productizer| productizer << :stop }
-
-  productizers.each(&:join).map(&:value).inject(:*)
-end
-
-def direct_benchmark = run_benchmark(DirectProductizer)
-def ractor_benchmark = run_benchmark(RactorProductizer)
-def thread_benchmark = run_benchmark(ThreadProductizer)
-
-benchmarks = [:direct, :ractor, :thread]
+productizers = [DirectProductizer, RactorProductizer, ThreadProductizer]
 
 puts "warming up..."
 
-benchmarks.each do |method_name|
-  benchmark(method_name, silent: true)
+productizers.each do |productizer|
+  productizer.benchmark(silent: true)
 end
-benchmarks.reverse.each do |method_name|
-  benchmark(method_name, silent: true)
+productizers.reverse.each do |productizer|
+  productizer.benchmark(silent: true)
 end
 
 puts "ok here we go..."
 
-benchmark(:direct)
-ractor_elapsed_time = benchmark(:ractor)
-thread_elapsed_time = benchmark(:thread)
+DirectProductizer.benchmark
+ractor_elapsed_time = RactorProductizer.benchmark
+thread_elapsed_time = ThreadProductizer.benchmark
 
 ractors_speedup = 1 - (ractor_elapsed_time / thread_elapsed_time)
 
