@@ -8,6 +8,7 @@ require "async"
 $log = Queue.new
 
 $log << "main fiber is #{Fiber.current}"
+$main_fiber = Fiber.current
 
 puts "Main thread #{Thread.current}"
 
@@ -34,7 +35,7 @@ class MyFiberScheduler
     $log << "scheduler created in #{Fiber.current}"
     main_fiber = Fiber.current
 
-    @idle_fiber = Fiber.new(blocking: false) do
+    @idle_fiber = Fiber.new do
       $log << "scheduler fiber is #{Fiber.current}"
       puts "Scheduler thread #{Thread.current}"
 
@@ -154,7 +155,15 @@ class MyFiberScheduler
   end
 
   def kernel_sleep(duration = nil)
-    return if Fiber.current == @idle_fiber
+    if Fiber.current == $main_fiber
+      $log << "Kernel sleep called for main fiber #{Fiber.current}"
+      raise "wtf!"
+    end
+
+    if Fiber.current == @idle_fiber
+      # $log << "Kernel sleep called for idle fiber #{@idle_fiber}"
+      return
+    end
 
     $log << "kernel_sleep called #{Fiber.current}"
 
