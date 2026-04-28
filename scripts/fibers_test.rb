@@ -64,8 +64,8 @@ class MyFiberScheduler
             unless @wake_at.empty?
               sleep 0.1
             end
-          elsif @wait_until_all_done
-            $log << "sleeping to wait for stuff to wake up"
+          elsif @catching_up
+            # $log << "sleeping to wait for stuff to wake up"
             sleep 0.1
           else
             $log << "Transferring to main #{main_fiber}"
@@ -119,12 +119,12 @@ class MyFiberScheduler
     @idle_fiber.transfer while @idle_fiber.alive?
   end
 
-  def wait_until_all_fibers_done
-    @wait_until_all_done = true
+  def catchup
+    @catching_up = true
     $log << "transferring control to the scheduler from #{Fiber.current}"
     @idle_fiber.transfer until nothing_to_do?
   ensure
-    @wait_until_all_done = false
+    @catching_up = false
   end
 
   def nothing_to_do?
@@ -171,7 +171,6 @@ Fiber.set_scheduler(scheduler)
 # end
 
 f1 = Fiber.schedule do
-  puts "f1 thread is #{Thread.current}"
   $log << "f1 is #{Fiber.current}"
   puts 1.1
   sleep 1
@@ -196,7 +195,29 @@ end
 $log << "main 1"
 puts "main 1"
 
-scheduler.close
+scheduler.catchup
+
+f4 = Fiber.schedule do
+  $log << "f4 is #{Fiber.current}"
+  puts 4.1
+  sleep 1
+  puts 4.2
+  puts 4.3
+end
+
+f5 = Fiber.schedule do
+  $log << "52 is #{Fiber.current}"
+  puts 5.1
+  puts 5.2
+  puts 5.3
+end
+
+f6 = Fiber.schedule do
+  $log << "63 is #{Fiber.current}"
+  puts 6.1
+  puts 6.2
+  puts 6.3
+end
 
 puts "main 2"
 $log << "main 2"
