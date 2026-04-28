@@ -26,10 +26,13 @@ class MyFiberScheduler
     wake_at = @wake_at = []
     ready_fibers = @ready_fibers = Queue.new
 
-    $log << "schduler created in #{Fiber.current}"
+    $log << "scheduler created in #{Fiber.current}"
 
-    @idle_fiber = Fiber.new(blocking: false) do
+    main_fiber = Fiber.current
+
+    @idle_fiber = Fiber.new(blocking: true) do
       $log << "scheduler fiber is #{Fiber.current}"
+
       loop do
         now = Time.now
 
@@ -37,8 +40,9 @@ class MyFiberScheduler
 
         wake_at.each do |pair|
           if pair.first <= now
+            $log << "Waking ##{pair.last}"
             remove << pair
-            ready_fibers << pair.second
+            ready_fibers << pair.last
           end
         end
 
@@ -49,22 +53,30 @@ class MyFiberScheduler
         # puts "idle fiber yielding back"
         if @ready_fibers.empty?
           @running = false
-
           sleep 0.1
         else
           @running = true
-          @ready_fibers.pop.transfer
+          fiber = @ready_fibers.pop
+
+          $log << "Transferring to #{fiber}"
+          fiber.transfer
         end
       end
     end
+
+    ready_fibers << Fiber.current
+    @idle_fiber.transfer
   end
 
   def running? = @running
 
   def block(blocker, timeout = nil)
+    raise if Fiber.current == @idle_fiber
+    raise if timeout
+
     $log << "block called #{Fiber.current}"
-    # whoops, seems this can be called from another thread?? Definitely don't want to "resume" if that happens?
-    @running = false
+
+    true
   end
 
   def run_some_other_fiber
@@ -77,6 +89,8 @@ class MyFiberScheduler
   end
 
   def unblock(blocker, fiber)
+    raise if Fiber.current == @idle_fiber
+
     $log << "unblock called #{Fiber.current} for #{fiber}"
     @ready_fibers << fiber
 
@@ -84,11 +98,15 @@ class MyFiberScheduler
   end
 
   def kernel_sleep(duration = nil)
+    raise if Fiber.current == @idle_fiber
+
     $log << "kernel_sleep called #{Fiber.current}"
 
     if duration
       @wake_at << [Time.now + duration, Fiber.current]
     end
+
+    @idle_fiber.transfer
   end
 
   def io_wait(io, events, timeout)
@@ -96,7 +114,13 @@ class MyFiberScheduler
   end
 
   def fiber(&)
-    Fiber.new(blocking: false, &).tap(&:resume)
+    fiber = Fiber.new(blocking: false, &)
+    $log << "created #{fiber} from #{Fiber.current}"
+
+    @ready_fibers << Fiber.current
+    fiber.transfer
+
+    fiber
   end
 
   def fiber_interrupt(fiber, exception)
@@ -111,7 +135,7 @@ Fiber.set_scheduler(scheduler)
 #   100_000.times { puts it }
 # end
 
-sleep 0.1
+sleep 1
 
 f1 = Fiber.schedule do
   $log << "f1 is #{Fiber.current}"
@@ -135,7 +159,7 @@ f3 = Fiber.schedule do
   puts 3.3
 end
 
-sleep 2
+sleep 5
 
 # [f1, f2, f3].each(&:resume)
 

@@ -1,6 +1,7 @@
 source "https://rubygems.org"
 
 gem "rake"
+gem "async"
 
 group :development do
   gem "foobara-rubocop-rules", ">= 1.0.0" # , path: "../../foobara/rubocop-rules"
