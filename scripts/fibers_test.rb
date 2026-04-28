@@ -65,15 +65,22 @@ class MyFiberScheduler
         if @ready_fibers.empty?
           @running = false
 
-          if @closing
+          if @closing || @catching_up
             # just transfer to all remaining waiting fibers
             unless @wake_at.empty?
-              sleep 0.1
+              @sleeping = true
+              @wakeup_queue = Queue.new(timeout: 0.1)
+
+              # Shouldn't this be one sleeping fiber with a loop instead of creating it each time??
+              sleeping_fiber = Fiber.new do
+                @wakeup_queue.pop
+                @wakeup_queue.clear
+                @sleeping = false
+                @wakeup_queue = nil
+              end
+
+              sleeping_fiber.transfer
             end
-          elsif @catching_up
-            # $log << "sleeping to wait for stuff to wake up"
-            # hmmmm sleep 0 doesn't work nor does next
-            next
           else
             $log << "Transferring to main #{main_fiber}"
             main_fiber.transfer
@@ -135,12 +142,16 @@ class MyFiberScheduler
       end
     end
 
-    return unless running?
+    return if running?
+
+    wake_up
 
     if Thread.current == @scheduler_thread
       @idle_fiber.transfer
     end
   end
+
+  def sleeping? = @sleeping
 
   def close
     # if !@ready_fibers.empty? || !@wake_at.empty?
@@ -159,6 +170,10 @@ class MyFiberScheduler
     @idle_fiber.transfer until nothing_to_do?
   ensure
     @catching_up = false
+  end
+
+  def wake_up
+    @wakeup_queue << true if @wakeup_queue
   end
 
   def nothing_to_do?
@@ -210,66 +225,95 @@ class MyFiberScheduler
   end
 end
 
+class Integer
+  def factorial
+    if self <= 1
+      1
+    else
+      self * (self - 1).factorial
+    end
+  end
+end
+
 scheduler = MyFiberScheduler.new
 Fiber.set_scheduler(scheduler)
 
-Thread.new do
-  100.times do
-    puts it
+r = Ractor.new do
+  100.times do |i|
+    # i = i.factorial
+    puts i
     # TODO: make this not necessary! Maybe attempt an interrupt approach like in the async gem
-    sleep 0
+    # sleep 0
   end
 end
+
+sleep 0.000001
 
 # fiber_creation_method = :new
 fiber_creation_method = :schedule
 
 f1 = Fiber.send(fiber_creation_method) do
   $log << "f1 is #{Fiber.current}"
+  $log << "#{Time.now} puts 1.1"
   puts 1.1
-  sleep 2
+  sleep 1
+  $log << "#{Time.now} puts 1.2"
   puts 1.2
+  $log << "#{Time.now} puts 1.3"
   puts 1.3
 end
 
 f2 = Fiber.send(fiber_creation_method) do
   $log << "f2 is #{Fiber.current}"
+  $log << "#{Time.now} puts 2.1"
   puts 2.1
+  $log << "#{Time.now} puts 2.2"
   puts 2.2
+  $log << "#{Time.now} puts 2.3"
   puts 2.3
 end
 
 f3 = Fiber.send(fiber_creation_method) do
   $log << "f3 is #{Fiber.current}"
+  $log << "#{Time.now} puts 3.1"
   puts 3.1
+  $log << "#{Time.now} puts 3.2"
   puts 3.2
+  $log << "#{Time.now} puts 3.3"
   puts 3.3
 end
 
 $log << "main 1"
 puts "main 1"
 
-scheduler.catchup
-
 f4 = Fiber.send(fiber_creation_method) do
   $log << "f4 is #{Fiber.current}"
+  $log << "#{Time.now} puts 4.1"
   puts 4.1
   sleep 2
+  $log << "#{Time.now} puts 4.2"
   puts 4.2
+  $log << "#{Time.now} puts 4.3"
   puts 4.3
 end
 
 f5 = Fiber.send(fiber_creation_method) do
   $log << "52 is #{Fiber.current}"
+  $log << "#{Time.now} puts 5.1"
   puts 5.1
+  $log << "#{Time.now} puts 5.2"
   puts 5.2
+  $log << "#{Time.now} puts 5.3"
   puts 5.3
 end
 
 f6 = Fiber.send(fiber_creation_method) do
   $log << "63 is #{Fiber.current}"
+  $log << "#{Time.now} puts 6.1"
   puts 6.1
+  $log << "#{Time.now} puts 6.2"
   puts 6.2
+  $log << "#{Time.now} puts 6.3"
   puts 6.3
 end
 
@@ -281,5 +325,9 @@ if fiber_creation_method == :new
   [f1, f2, f3, f4, f5, f6].each(&:transfer)
 end
 
+scheduler.catchup
+
 puts "main 2"
 $log << "main 2"
+
+r.join
