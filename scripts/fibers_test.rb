@@ -24,7 +24,10 @@ end
 
 class MyFiberScheduler
   def initialize
+    @scheduler_thread = Thread.current
+
     @wake_at = []
+    @blocked = {}
     @ready_fibers = Queue.new
 
     $log << "scheduler created in #{Fiber.current}"
@@ -54,11 +57,14 @@ class MyFiberScheduler
         if @ready_fibers.empty? && @wake_at.empty? && @closing
           puts "breaking"
           $log << "breaking"
+          @running = false
           break
         end
 
         # puts "idle fiber yielding back"
         if @ready_fibers.empty?
+          @running = false
+
           if @closing
             # just transfer to all remaining waiting fibers
             unless @wake_at.empty?
@@ -66,7 +72,8 @@ class MyFiberScheduler
             end
           elsif @catching_up
             # $log << "sleeping to wait for stuff to wake up"
-            sleep 0.1
+            # hmmmm sleep 0 doesn't work nor does next
+            next
           else
             $log << "Transferring to main #{main_fiber}"
             main_fiber.transfer
@@ -74,8 +81,10 @@ class MyFiberScheduler
         else
           fiber = @ready_fibers.pop
 
-          if fiber.alive?
+          # TODO: the wake_at check is pretty bad, performance-wise
+          if fiber.alive? && !@blocked.key?(fiber.object_id) && !@wake_at.map(&:last).include?(fiber)
             $log << "Transferring to #{fiber}"
+            @running = true
             fiber.transfer
             $log << "control returned from #{fiber}?"
           else
@@ -88,11 +97,21 @@ class MyFiberScheduler
     @idle_fiber.transfer
   end
 
-  def block(blocker, timeout = nil)
-    raise if Fiber.current == @idle_fiber
-    raise if timeout
+  def running? = @running
 
-    $log << "block called #{Fiber.current}"
+  def block(blocker, timeout = nil)
+    return false if Fiber.current == @idle_fiber
+    raise "todo: handle timeout" if timeout
+
+    fiber = Fiber.current
+
+    $log << "block called #{fiber} by #{blocker} #{timeout}"
+
+    if timeout
+      wake_at(timeout)
+    else
+      block_indefinitely
+    end
 
     @idle_fiber.transfer
 
@@ -103,9 +122,24 @@ class MyFiberScheduler
     raise if Fiber.current == @idle_fiber
 
     $log << "unblock called #{Fiber.current} for #{fiber}"
-    @ready_fibers << fiber
 
-    @idle_fiber.transfer unless running?
+    fiber_id = fiber.object_id
+
+    if @blocked.key?(fiber_id)
+      count = @blocked[fiber_id]
+      count -= 1
+
+      if count <= 0
+        @blocked.delete(fiber_id)
+        @ready_fibers << fiber
+      end
+    end
+
+    return unless running?
+
+    if Thread.current == @scheduler_thread
+      @idle_fiber.transfer
+    end
   end
 
   def close
@@ -138,10 +172,23 @@ class MyFiberScheduler
     $log << "kernel_sleep called #{Fiber.current}"
 
     if duration
-      @wake_at << [Time.now + duration, Fiber.current]
+      wake_at(duration)
+    else
+      block_indefinitely
     end
 
     @idle_fiber.transfer
+  end
+
+  def wake_at(duration)
+    @wake_at << [Time.now + duration, Fiber.current]
+  end
+
+  def block_indefinitely
+    fiber = Fiber.current
+
+    count = @blocked[fiber.object_id] || 0
+    @blocked[fiber.object_id] = count + 1
   end
 
   def io_wait(io, events, timeout)
@@ -166,9 +213,13 @@ end
 scheduler = MyFiberScheduler.new
 Fiber.set_scheduler(scheduler)
 
-# Thread.new do
-#   100_000.times { puts it }
-# end
+Thread.new do
+  100.times do
+    puts it
+    # TODO: make this not necessary! Maybe attempt an interrupt approach like in the async gem
+    sleep 0
+  end
+end
 
 # fiber_creation_method = :new
 fiber_creation_method = :schedule
