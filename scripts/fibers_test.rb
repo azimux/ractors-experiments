@@ -39,7 +39,7 @@ class MyFiberScheduler
       puts "Scheduler thread #{Thread.current}"
 
       loop do
-        $log << "ready fiber count #{@ready_fibers.size}"
+        # $log << "ready fiber count #{@ready_fibers.size}"
         now = Time.now
 
         remove = []
@@ -71,15 +71,9 @@ class MyFiberScheduler
 
           if @closing
             # just transfer to all remaining waiting fibers
-            until wake_at.empty?
-              @wake_at = wake_at.sort_by(&:first)
-              @wake_at.shift => Time, fiber
-              $log << "transferring to #{fiber} at close"
-              fiber.transfer
+            unless @wake_at.empty?
+              sleep 0.1
             end
-
-            $log << "sleeping to wait for stuff to wake up to close"
-            # sleep 0.1
           elsif @wait_until_all_done
             $log << "sleeping to wait for stuff to wake up"
             sleep 0.1
@@ -160,7 +154,7 @@ class MyFiberScheduler
   end
 
   def kernel_sleep(duration = nil)
-    raise if Fiber.current == @idle_fiber
+    return if Fiber.current == @idle_fiber
 
     $log << "kernel_sleep called #{Fiber.current}"
 
@@ -202,7 +196,7 @@ f1 = Fiber.schedule do
   $log << "f1 is #{Fiber.current}"
   $log << "printing 1.1"
   puts 1.1
-  sleep 1
+  sleep 5
   $log << "printing 1.2"
   puts 1.2
   $log << "printing 1.3"
@@ -233,7 +227,7 @@ $log << "main 1"
 puts "main 1"
 
 # [f1, f2, f3].each(&:resume)
-sleep 5
+# sleep 5
 scheduler.close
 puts "main 2"
 $log << "main 2"
