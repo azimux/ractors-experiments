@@ -149,7 +149,7 @@ class MyFiberScheduler
   end
 
   def fiber(&)
-    fiber = Fiber.new(blocking: false, &)
+    fiber = Fiber.new(&)
 
     $log << "created #{fiber} from #{Fiber.current}"
 
@@ -170,22 +170,25 @@ Fiber.set_scheduler(scheduler)
 #   100_000.times { puts it }
 # end
 
-f1 = Fiber.schedule do
+# fiber_creation_method = :new
+fiber_creation_method = :schedule
+
+f1 = Fiber.send(fiber_creation_method) do
   $log << "f1 is #{Fiber.current}"
   puts 1.1
-  sleep 1
+  sleep 2
   puts 1.2
   puts 1.3
 end
 
-f2 = Fiber.schedule do
+f2 = Fiber.send(fiber_creation_method) do
   $log << "f2 is #{Fiber.current}"
   puts 2.1
   puts 2.2
   puts 2.3
 end
 
-f3 = Fiber.schedule do
+f3 = Fiber.send(fiber_creation_method) do
   $log << "f3 is #{Fiber.current}"
   puts 3.1
   puts 3.2
@@ -197,26 +200,34 @@ puts "main 1"
 
 scheduler.catchup
 
-f4 = Fiber.schedule do
+f4 = Fiber.send(fiber_creation_method) do
   $log << "f4 is #{Fiber.current}"
   puts 4.1
-  sleep 1
+  sleep 2
   puts 4.2
   puts 4.3
 end
 
-f5 = Fiber.schedule do
+f5 = Fiber.send(fiber_creation_method) do
   $log << "52 is #{Fiber.current}"
   puts 5.1
   puts 5.2
   puts 5.3
 end
 
-f6 = Fiber.schedule do
+f6 = Fiber.send(fiber_creation_method) do
   $log << "63 is #{Fiber.current}"
   puts 6.1
   puts 6.2
   puts 6.3
+end
+
+if fiber_creation_method == :new
+  # If the fibers are created with .new then we must manually start them. Otherwise if called with
+  # .schedule they are handled in the scheduler's #fiber method.
+  # It seems that the main practical difference that's noticeable at the moment is that calling
+  # Fiber.schedule results in #fiber being called and calling Fiber.new does not.
+  [f1, f2, f3, f4, f5, f6].each(&:transfer)
 end
 
 puts "main 2"
