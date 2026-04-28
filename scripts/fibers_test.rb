@@ -144,7 +144,7 @@ class MyFiberScheduler
 
     $log << "closing!!"
     @closing = true
-    @idle_fiber.transfer if @idle_fiber.alive?
+    @idle_fiber.transfer while @idle_fiber.alive?
   end
 
   def wait_until_all_fibers_done
