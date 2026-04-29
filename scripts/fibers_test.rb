@@ -148,6 +148,10 @@ class MyFiberScheduler
 
     if Thread.current == @scheduler_thread
       @idle_fiber.transfer
+    else
+      # This is important! If we are in a different thread, we cannot transfer control to the fiber.
+      # What we can do though is sleep the other thread to give outselves a chance to run
+      sleep 0
     end
   end
 
@@ -235,51 +239,65 @@ class Integer
   end
 end
 
+puts "here we go!!"
+
 scheduler = MyFiberScheduler.new
 Fiber.set_scheduler(scheduler)
 
-r = Ractor.new do
+$log << "#{Time.now.inspect} creating Thread"
+
+# Some strange outcomes based on which sleeps are commented out...
+# sleep in factorial thread    sleep in main thread      outcome
+#                         Y                       Y      everything interleaved as expected, slow until 4.3 printed
+#                         Y                       N      everything interleaved as expected, slow until 4.3 printed
+#                         N                       Y      everything interleaved as expected, slow until 4.3 printed
+#                         N                       N      everything interleaved as expected, slow until 4.3 printed
+r = Thread.new do
+  $log << "#{Time.now.inspect} factorial thread starting"
   100.times do |i|
-    # i = i.factorial
+    i = i.factorial
     puts i
     # TODO: make this not necessary! Maybe attempt an interrupt approach like in the async gem
-    # sleep 0
+    sleep 0
   end
+  $log << "#{Time.now.inspect} factorial thread done"
 end
 
-sleep 0.000001
+sleep 0
 
 # fiber_creation_method = :new
 fiber_creation_method = :schedule
 
+$log << "#{Time.now.inspect} creating fibers"
+
 f1 = Fiber.send(fiber_creation_method) do
   $log << "f1 is #{Fiber.current}"
-  $log << "#{Time.now} puts 1.1"
+  $log << "#{Time.now.inspect} puts 1.1"
   puts 1.1
   sleep 1
-  $log << "#{Time.now} puts 1.2"
+  $log << "#{Time.now.inspect} puts 1.2"
   puts 1.2
-  $log << "#{Time.now} puts 1.3"
+  $log << "#{Time.now.inspect} puts 1.3"
   puts 1.3
 end
 
 f2 = Fiber.send(fiber_creation_method) do
   $log << "f2 is #{Fiber.current}"
-  $log << "#{Time.now} puts 2.1"
+  $log << "#{Time.now.inspect} puts 2.1"
   puts 2.1
-  $log << "#{Time.now} puts 2.2"
+  $log << "#{Time.now.inspect} puts 2.2"
   puts 2.2
-  $log << "#{Time.now} puts 2.3"
+  $log << "#{Time.now.inspect} puts 2.3"
   puts 2.3
 end
 
 f3 = Fiber.send(fiber_creation_method) do
   $log << "f3 is #{Fiber.current}"
-  $log << "#{Time.now} puts 3.1"
+  $log << "#{Time.now.inspect} puts 3.1"
   puts 3.1
-  $log << "#{Time.now} puts 3.2"
+  $log << "#{Time.now.inspect} puts 3.2"
   puts 3.2
-  $log << "#{Time.now} puts 3.3"
+  $log << "#{Time.now.inspect} puts 3.3"
   puts 3.3
 end
 
@@ -288,34 +306,36 @@ puts "main 1"
 
 f4 = Fiber.send(fiber_creation_method) do
   $log << "f4 is #{Fiber.current}"
-  $log << "#{Time.now} puts 4.1"
+  $log << "#{Time.now.inspect} puts 4.1"
   puts 4.1
   sleep 2
-  $log << "#{Time.now} puts 4.2"
+  $log << "#{Time.now.inspect} puts 4.2"
   puts 4.2
-  $log << "#{Time.now} puts 4.3"
+  $log << "#{Time.now.inspect} puts 4.3"
   puts 4.3
 end
 
 f5 = Fiber.send(fiber_creation_method) do
   $log << "52 is #{Fiber.current}"
-  $log << "#{Time.now} puts 5.1"
+  $log << "#{Time.now.inspect} puts 5.1"
   puts 5.1
-  $log << "#{Time.now} puts 5.2"
+  $log << "#{Time.now.inspect} puts 5.2"
   puts 5.2
-  $log << "#{Time.now} puts 5.3"
+  $log << "#{Time.now.inspect} puts 5.3"
   puts 5.3
 end
 
 f6 = Fiber.send(fiber_creation_method) do
   $log << "63 is #{Fiber.current}"
-  $log << "#{Time.now} puts 6.1"
+  $log << "#{Time.now.inspect} puts 6.1"
   puts 6.1
-  $log << "#{Time.now} puts 6.2"
+  $log << "#{Time.now.inspect} puts 6.2"
   puts 6.2
-  $log << "#{Time.now} puts 6.3"
+  $log << "#{Time.now.inspect} puts 6.3"
   puts 6.3
 end
+
+$log << "#{Time.now.inspect} done creating fibers"
 
 if fiber_creation_method == :new
   # If the fibers are created with .new then we must manually start them. Otherwise if called with
