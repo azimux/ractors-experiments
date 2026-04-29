@@ -29,6 +29,9 @@ class MyFiberScheduler
     @wake_at = []
     @blocked = {}
     @ready_fibers = Queue.new
+    @wakeup_queue = Queue.new
+
+    $log << "wakeup queue is #{@wakeup_queue}"
 
     $log << "scheduler created in #{Fiber.current}"
     main_fiber = Fiber.current
@@ -69,17 +72,18 @@ class MyFiberScheduler
             # just transfer to all remaining waiting fibers
             unless @wake_at.empty?
               @sleeping = true
-              @wakeup_queue = Queue.new(timeout: 0.1)
 
-              # Shouldn't this be one sleeping fiber with a loop instead of creating it each time??
-              sleeping_fiber = Fiber.new do
-                @wakeup_queue.pop
-                @wakeup_queue.clear
-                @sleeping = false
-                @wakeup_queue = nil
+              timeout = @wake_at.map(&:first).min - Time.now
+
+              Thread.new(timeout, @wakeup_queue) do |timeout, queue|
+                sleep timeout
+                queue << true
               end
 
-              sleeping_fiber.transfer
+              @wakeup_queue.pop(timeout:)
+              @wakeup_queue.clear
+              $log << "waking up!!"
+              @sleeping = false
             end
           else
             $log << "Transferring to main #{main_fiber}"
@@ -108,7 +112,6 @@ class MyFiberScheduler
 
   def block(blocker, timeout = nil)
     return false if Fiber.current == @idle_fiber
-    raise "todo: handle timeout" if timeout
 
     fiber = Fiber.current
 
@@ -128,7 +131,7 @@ class MyFiberScheduler
   def unblock(blocker, fiber)
     raise if Fiber.current == @idle_fiber
 
-    $log << "unblock called #{Fiber.current} for #{fiber}"
+    $log << "unblock called for #{fiber} in #{Fiber.current}"
 
     fiber_id = fiber.object_id
 
@@ -139,12 +142,11 @@ class MyFiberScheduler
       if count <= 0
         @blocked.delete(fiber_id)
         @ready_fibers << fiber
+        wake_up
       end
     end
 
     return if running?
-
-    wake_up
 
     if Thread.current == @scheduler_thread
       @idle_fiber.transfer
@@ -158,6 +160,7 @@ class MyFiberScheduler
   def sleeping? = @sleeping
 
   def close
+    wake_up
     # if !@ready_fibers.empty? || !@wake_at.empty?
     #   $log << "wtf!!"
     #   $log << caller_locations
@@ -169,6 +172,7 @@ class MyFiberScheduler
   end
 
   def catchup
+    wake_up
     @catching_up = true
     $log << "transferring control to the scheduler from #{Fiber.current}"
     @idle_fiber.transfer until nothing_to_do?
@@ -177,7 +181,7 @@ class MyFiberScheduler
   end
 
   def wake_up
-    @wakeup_queue << true if @wakeup_queue
+    @wakeup_queue << true
   end
 
   def nothing_to_do?
@@ -200,7 +204,21 @@ class MyFiberScheduler
   end
 
   def wake_at(duration)
-    @wake_at << [Time.now + duration, Fiber.current]
+    fiber = Fiber.current
+
+    entry = @wake_at.find { it.last == fiber }
+
+    at = Time.now + duration
+
+    if entry
+      if entry.first > at
+        entry[0] = at
+        wake_up
+      end
+    else
+      @wake_at << [at, fiber]
+      wake_up
+    end
   end
 
   def block_indefinitely
@@ -220,6 +238,8 @@ class MyFiberScheduler
     $log << "created #{fiber} from #{Fiber.current}"
 
     @ready_fibers << fiber
+
+    wake_up
 
     fiber
   end
@@ -250,20 +270,23 @@ $log << "#{Time.now.inspect} creating Thread"
 # sleep in factorial thread    sleep in main thread      outcome
 #                         Y                       Y      everything interleaved as expected, slow until 4.3 printed
 #                         Y                       N      everything interleaved as expected, slow until 4.3 printed
-#                         N                       Y      everything interleaved as expected, slow until 4.3 printed
+#                         N                       Y      factorial thread prints in entirety before fibers hmm
 #                         N                       N      everything interleaved as expected, slow until 4.3 printed
 r = Thread.new do
   $log << "#{Time.now.inspect} factorial thread starting"
+
   100.times do |i|
     i = i.factorial
     puts i
     # TODO: make this not necessary! Maybe attempt an interrupt approach like in the async gem
-    sleep 0
+    # sleep 0
+    # $log << i
   end
+
   $log << "#{Time.now.inspect} factorial thread done"
 end
 
-sleep 0
+# sleep 0
 
 # fiber_creation_method = :new
 fiber_creation_method = :schedule
@@ -316,7 +339,7 @@ f4 = Fiber.send(fiber_creation_method) do
 end
 
 f5 = Fiber.send(fiber_creation_method) do
-  $log << "52 is #{Fiber.current}"
+  $log << "f5 is #{Fiber.current}"
   $log << "#{Time.now.inspect} puts 5.1"
   puts 5.1
   $log << "#{Time.now.inspect} puts 5.2"
@@ -326,7 +349,7 @@ f5 = Fiber.send(fiber_creation_method) do
 end
 
 f6 = Fiber.send(fiber_creation_method) do
-  $log << "63 is #{Fiber.current}"
+  $log << "f6 is #{Fiber.current}"
   $log << "#{Time.now.inspect} puts 6.1"
   puts 6.1
   $log << "#{Time.now.inspect} puts 6.2"
@@ -351,3 +374,6 @@ puts "main 2"
 $log << "main 2"
 
 r.join
+
+puts "main 3"
+$log << "main 3"
