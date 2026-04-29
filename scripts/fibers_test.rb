@@ -21,8 +21,92 @@ end
 
 # scheduler = Async::Scheduler.new
 # Fiber.set_scheduler(scheduler)
-
 class MyFiberScheduler
+  module FiberSchedulerInterface
+    def block(blocker, timeout = nil)
+      return false if Fiber.current == @idle_fiber
+
+      fiber = Fiber.current
+
+      $log << "block called #{fiber} by #{blocker} #{timeout}"
+
+      if timeout
+        wake_at(timeout)
+      else
+        block_indefinitely
+      end
+
+      @idle_fiber.transfer
+
+      true
+    end
+
+    def unblock(blocker, fiber)
+      raise if Fiber.current == @idle_fiber
+
+      $log << "unblock called for #{fiber} in #{Fiber.current}"
+
+      fiber_id = fiber.object_id
+
+      if @blocked.key?(fiber_id)
+        count = @blocked[fiber_id]
+        count -= 1
+
+        if count <= 0
+          @blocked.delete(fiber_id)
+          @ready_fibers << fiber
+          wake_up
+        end
+      end
+
+      return if running?
+
+      if Thread.current == @scheduler_thread
+        @idle_fiber.transfer
+      else
+        # This is important! If we are in a different thread, we cannot transfer control to the fiber.
+        # What we can do though is sleep the other thread to give outselves a chance to run
+        sleep 0
+      end
+    end
+
+    def kernel_sleep(duration = nil)
+      return if Fiber.current == @idle_fiber
+
+      $log << "kernel_sleep called #{Fiber.current}"
+
+      if duration
+        wake_at(duration)
+      else
+        block_indefinitely
+      end
+
+      @idle_fiber.transfer
+    end
+
+    def io_wait(io, events, timeout)
+      raise NotImplementedError
+    end
+
+    def fiber(&)
+      fiber = Fiber.new(&)
+
+      $log << "created #{fiber} from #{Fiber.current}"
+
+      @ready_fibers << fiber
+
+      wake_up
+
+      fiber
+    end
+
+    def fiber_interrupt(fiber, exception)
+      raise NotImplementedError
+    end
+  end
+
+  include FiberSchedulerInterface
+
   def initialize
     @scheduler_thread = Thread.current
 
@@ -110,53 +194,6 @@ class MyFiberScheduler
 
   def running? = @running
 
-  def block(blocker, timeout = nil)
-    return false if Fiber.current == @idle_fiber
-
-    fiber = Fiber.current
-
-    $log << "block called #{fiber} by #{blocker} #{timeout}"
-
-    if timeout
-      wake_at(timeout)
-    else
-      block_indefinitely
-    end
-
-    @idle_fiber.transfer
-
-    true
-  end
-
-  def unblock(blocker, fiber)
-    raise if Fiber.current == @idle_fiber
-
-    $log << "unblock called for #{fiber} in #{Fiber.current}"
-
-    fiber_id = fiber.object_id
-
-    if @blocked.key?(fiber_id)
-      count = @blocked[fiber_id]
-      count -= 1
-
-      if count <= 0
-        @blocked.delete(fiber_id)
-        @ready_fibers << fiber
-        wake_up
-      end
-    end
-
-    return if running?
-
-    if Thread.current == @scheduler_thread
-      @idle_fiber.transfer
-    else
-      # This is important! If we are in a different thread, we cannot transfer control to the fiber.
-      # What we can do though is sleep the other thread to give outselves a chance to run
-      sleep 0
-    end
-  end
-
   def sleeping? = @sleeping
 
   def close
@@ -189,20 +226,6 @@ class MyFiberScheduler
   end
 
   # For whatever reason, this is called for the idle fiber but never for the main fiber hmmm... why?
-  def kernel_sleep(duration = nil)
-    return if Fiber.current == @idle_fiber
-
-    $log << "kernel_sleep called #{Fiber.current}"
-
-    if duration
-      wake_at(duration)
-    else
-      block_indefinitely
-    end
-
-    @idle_fiber.transfer
-  end
-
   def wake_at(duration)
     fiber = Fiber.current
 
@@ -227,26 +250,6 @@ class MyFiberScheduler
     count = @blocked[fiber.object_id] || 0
     @blocked[fiber.object_id] = count + 1
   end
-
-  def io_wait(io, events, timeout)
-    raise NotImplementedError
-  end
-
-  def fiber(&)
-    fiber = Fiber.new(&)
-
-    $log << "created #{fiber} from #{Fiber.current}"
-
-    @ready_fibers << fiber
-
-    wake_up
-
-    fiber
-  end
-
-  def fiber_interrupt(fiber, exception)
-    raise NotImplementedError
-  end
 end
 
 class Integer
@@ -259,10 +262,10 @@ class Integer
   end
 end
 
-puts "here we go!!"
-
 scheduler = MyFiberScheduler.new
 Fiber.set_scheduler(scheduler)
+
+puts "here we go!!"
 
 $log << "#{Time.now.inspect} creating Thread"
 
