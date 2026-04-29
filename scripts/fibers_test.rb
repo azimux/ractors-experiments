@@ -1,9 +1,6 @@
 #!/usr/bin/env ruby
 
-# Why does this script fail??
-
 require "bundler/setup"
-# require "async"
 
 $log = Queue.new
 
@@ -19,8 +16,6 @@ end
 # require "pry"
 # require "pry-byebug"
 
-# scheduler = Async::Scheduler.new
-# Fiber.set_scheduler(scheduler)
 class MyFiberScheduler
   module FiberSchedulerInterface
     def block(blocker, timeout = nil)
@@ -84,10 +79,6 @@ class MyFiberScheduler
       @idle_fiber.transfer
     end
 
-    def io_wait(io, events, timeout)
-      raise NotImplementedError
-    end
-
     def fiber(&)
       fiber = Fiber.new(&)
 
@@ -100,9 +91,19 @@ class MyFiberScheduler
       fiber
     end
 
-    def fiber_interrupt(fiber, exception)
-      raise NotImplementedError
-    end
+    def fiber_interrupt(fiber, exception) = raise NotImplementedError
+    def io_wait(...) = raise NotImplementedError
+    def io_read(...) = raise NotImplementedError
+    def io_write(...) = raise NotImplementedError
+    def io_pread(...) = raise NotImplementedError
+    def io_pwrite(...) = raise NotImplementedError
+    def io_select(...) = raise NotImplementedError
+    def io_close(...) = raise NotImplementedError
+    def process_wait(...) = raise NotImplementedError
+    def timeout_after(...) = raise NotImplementedError
+    def address_resolve(...) = raise NotImplementedError
+    def blocking_operation_wait(...) = raise NotImplementedError
+    def yield(...) = raise NotImplementedError
   end
 
   include FiberSchedulerInterface
@@ -142,7 +143,6 @@ class MyFiberScheduler
         end
 
         if @ready_fibers.empty? && @wake_at.empty? && @closing
-          puts "breaking"
           $log << "breaking"
           @running = false
           break
@@ -193,16 +193,10 @@ class MyFiberScheduler
   end
 
   def running? = @running
-
   def sleeping? = @sleeping
 
   def close
     wake_up
-    # if !@ready_fibers.empty? || !@wake_at.empty?
-    #   $log << "wtf!!"
-    #   $log << caller_locations
-    # end
-
     $log << "closing!!"
     @closing = true
     @idle_fiber.transfer while @idle_fiber.alive?
@@ -281,7 +275,6 @@ r = Thread.new do
   100.times do |i|
     i = i.factorial
     puts i
-    # TODO: make this not necessary! Maybe attempt an interrupt approach like in the async gem
     # sleep 0
     # $log << i
   end
