@@ -5,7 +5,6 @@ require "bundler/setup"
 $log = Queue.new
 
 $log << "main fiber is #{Fiber.current}"
-$main_fiber = Fiber.current
 
 at_exit do
   puts "exiting"
@@ -118,77 +117,81 @@ class MyFiberScheduler
     $log << "wakeup queue is #{@wakeup_queue}"
 
     $log << "scheduler created in #{Fiber.current}"
-    main_fiber = Fiber.current
+    @main_fiber = Fiber.current
 
     @idle_fiber = Fiber.new do
       $log << "scheduler fiber is #{Fiber.current}"
 
       loop do
-        # $log << "ready fiber count #{@ready_fibers.size}"
-        now = Time.now
-
-        remove = []
-
-        @wake_at.each do |pair|
-          if pair.first <= now
-            $log << "Waking ##{pair.last}"
-            remove << pair
-            @ready_fibers << pair.last
-          end
-        end
-
-        unless remove.empty?
-          remove.each { |pair| @wake_at.delete(pair) }
-        end
-
         if @ready_fibers.empty? && @wake_at.empty? && @closing
           $log << "breaking"
           @running = false
           break
         end
 
-        # puts "idle fiber yielding back"
-        if @ready_fibers.empty?
-          @running = false
-
-          if @closing || @catching_up
-            # just transfer to all remaining waiting fibers
-            unless @wake_at.empty?
-              @sleeping = true
-
-              timeout = @wake_at.map(&:first).min - Time.now
-
-              Thread.new(timeout, @wakeup_queue) do |timeout, queue|
-                sleep timeout
-                queue << true
-              end
-
-              @wakeup_queue.pop(timeout:)
-              @wakeup_queue.clear
-              $log << "waking up!!"
-              @sleeping = false
-            end
-          else
-            $log << "Transferring to main #{main_fiber}"
-            main_fiber.transfer
-          end
-        else
-          fiber = @ready_fibers.pop
-
-          # TODO: the wake_at check is pretty bad, performance-wise
-          if fiber.alive? && !@blocked.key?(fiber) && !@wake_at.map(&:last).include?(fiber)
-            $log << "Transferring to #{fiber}"
-            @running = true
-            fiber.transfer
-            $log << "control returned from #{fiber}?"
-          else
-            $log << "Whoa, #{fiber} is dead"
-          end
-        end
+        tick_idle_fiber
       end
     end
 
     @idle_fiber.transfer
+  end
+
+  def tick_idle_fiber
+    # $log << "ready fiber count #{@ready_fibers.size}"
+    now = Time.now
+
+    remove = []
+
+    @wake_at.each do |pair|
+      if pair.first <= now
+        $log << "Waking ##{pair.last}"
+        remove << pair
+        @ready_fibers << pair.last
+      end
+    end
+
+    unless remove.empty?
+      remove.each { |pair| @wake_at.delete(pair) }
+    end
+
+    # puts "idle fiber yielding back"
+    if @ready_fibers.empty?
+      @running = false
+
+      if @closing || @catching_up
+        # just transfer to all remaining waiting fibers
+        unless @wake_at.empty?
+          @sleeping = true
+
+          timeout = @wake_at.map(&:first).min - Time.now
+
+          Thread.new(timeout, @wakeup_queue) do |timeout, queue|
+            sleep timeout
+            queue << true
+          end
+
+          @wakeup_queue.pop(timeout:)
+          @wakeup_queue.clear
+          $log << "waking up!!"
+          @sleeping = false
+        end
+      else
+        $log << "Transferring to main #{@main_fiber}"
+        @main_fiber.transfer
+      end
+    else
+      fiber = @ready_fibers.pop
+
+      # TODO: the wake_at check is pretty bad, performance-wise
+      if fiber.alive? && !@blocked.key?(fiber) && !@wake_at.map(&:last).include?(fiber)
+        $log << "Transferring to #{fiber}"
+        @running = true
+        fiber.transfer
+        $log << "control returned from #{fiber}?"
+      else
+        $log << "Whoa, #{fiber} is dead"
+      end
+    end
   end
 
   def running? = @running
@@ -268,7 +271,7 @@ $log << "#{Time.now.inspect} creating Thread"
 #                         Y                       N      everything interleaved as expected, slow until 4.3 printed
 #                         N                       Y      factorial thread prints in entirety before fibers hmm
 #                         N                       N      everything interleaved as expected, slow until 4.3 printed
-r = Thread.new do
+factorial_thread_or_ractor = Thread.new do
   $log << "#{Time.now.inspect} factorial thread starting"
 
   100.times do |i|
@@ -368,7 +371,7 @@ scheduler.catchup
 puts "main 2"
 $log << "main 2"
 
-r.join
+factorial_thread_or_ractor.join
 
 puts "main 3"
 $log << "main 3"
