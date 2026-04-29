@@ -94,7 +94,8 @@ class MyFiberScheduler
     def fiber_interrupt(fiber, exception) = raise NotImplementedError
     def io_wait(...) = raise NotImplementedError
     def io_read(...) = raise NotImplementedError
-    def io_write(...) = raise NotImplementedError
+    # This method is considered experimental and seems to be ignored if we don't #respond_to? it
+    # def io_write(...) = raise NotImplementedError
     def io_pread(...) = raise NotImplementedError
     def io_pwrite(...) = raise NotImplementedError
     def io_select(...) = raise NotImplementedError
