@@ -41,14 +41,12 @@ class MyFiberScheduler
 
       $log << "unblock called for #{fiber} in #{Fiber.current}"
 
-      fiber_id = fiber.object_id
-
-      if @blocked.key?(fiber_id)
-        count = @blocked[fiber_id]
+      if @blocked.key?(fiber)
+        count = @blocked[fiber]
         count -= 1
 
         if count <= 0
-          @blocked.delete(fiber_id)
+          @blocked.delete(fiber)
           @ready_fibers << fiber
           wake_up
         end
@@ -113,7 +111,7 @@ class MyFiberScheduler
     @scheduler_thread = Thread.current
 
     @wake_at = []
-    @blocked = {}
+    @blocked = {}.compare_by_identity
     @ready_fibers = Queue.new
     @wakeup_queue = Queue.new
 
@@ -178,7 +176,7 @@ class MyFiberScheduler
           fiber = @ready_fibers.pop
 
           # TODO: the wake_at check is pretty bad, performance-wise
-          if fiber.alive? && !@blocked.key?(fiber.object_id) && !@wake_at.map(&:last).include?(fiber)
+          if fiber.alive? && !@blocked.key?(fiber) && !@wake_at.map(&:last).include?(fiber)
             $log << "Transferring to #{fiber}"
             @running = true
             fiber.transfer
@@ -242,8 +240,8 @@ class MyFiberScheduler
   def block_indefinitely
     fiber = Fiber.current
 
-    count = @blocked[fiber.object_id] || 0
-    @blocked[fiber.object_id] = count + 1
+    count = @blocked[fiber] || 0
+    @blocked[fiber] = count + 1
   end
 end
 
