@@ -251,3 +251,9 @@ not accessible from the outside ractor.
 # examples:
 ## cpu-bound work
 ## race condition without semaphores
+
+Note: Using a Fiber to eliminate a race condition seems like it would require using blocking: true to
+prevent a FiberScheduler from preempting it.
+UPDATE: Verified! See: ../race-condition/race-condition-demo-fixed-with-fibers
+
+note: another fiber scheduler is here: ruby-src/ruby/test/fiber/scheduler.rb

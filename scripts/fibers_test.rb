@@ -111,7 +111,7 @@ class MyFiberScheduler
 
     @wake_at = []
     @blocked = {}.compare_by_identity
-    @ready_fibers = Queue.new
+    @ready_fibers = []
     @wakeup_queue = Queue.new
 
     $log << "wakeup queue is #{@wakeup_queue}"

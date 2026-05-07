@@ -1,0 +1,3 @@
+1. Look into <RactorRequire> module that provides a #require override. What's this all about?
+
+probably need to add to the list of Q/A file required inside ractor? file reqiured outside ractor?
