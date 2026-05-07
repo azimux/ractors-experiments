@@ -10,7 +10,7 @@ $log << "main fiber is #{Fiber.current}"
 
 at_exit do
   puts "exiting"
-  # puts $log.pop until $log.empty?
+  puts $log.pop until $log.empty?
   puts "done printing log"
 end
 
@@ -21,35 +21,56 @@ class MyFiberScheduler
   module FiberSchedulerInterface
     def block(blocker, timeout = nil)
       $log << "block called #{Fiber.current} by #{blocker} #{timeout}"
-      # return false if block can't be implemented
-      false
+
+      fiber = Fiber.current
+
+      if timeout
+        blocked_until[fiber] = Time.now + timeout
+      else
+        blocked << fiber
+      end
+
+      transfer
+
+      true
     end
 
+    # This might be called from a different thread! wow! Is this threadsafe to use Array across
+    # threads like this??
     def unblock(blocker, fiber)
       $log << "unblock called for #{fiber} in #{Fiber.current}"
+
+      blocked.delete(fiber)
+
+      if Thread.current == scheduler_thread
+        transfer
+      else
+        # This is important! If we are in a different thread, we cannot transfer control to the fiber.
+        # What we can do though is sleep the other thread to give ourselves a chance to run
+        sleep 0
+      end
     end
 
     def kernel_sleep(duration = nil)
-      $log << "kernel_sleep called #{Fiber.current}"
+      fiber = Fiber.current
 
-      now = t0 = Time.now
+      $log << "kernel_sleep called #{fiber}"
 
       if duration
-        # A really bad sleep implementation!
-        now = Time.now until now - t0 >= duration
-        true
+        blocked_until[fiber] = Time.now + duration
+        transfer
       else
         raise NotImplementedError
       end
     end
 
     def fiber(&)
-      f = Fiber.new(&)
-      fibers << f
+      fiber = Fiber.new(&)
+      fibers << fiber
 
-      $log << "created #{f} from #{Fiber.current}"
+      $log << "created #{fiber} from #{Fiber.current}"
 
-      f
+      fiber
     end
 
     def fiber_interrupt(fiber, exception) = raise NotImplementedError
@@ -68,28 +89,69 @@ class MyFiberScheduler
     def yield(...) = raise NotImplementedError
 
     def close
+      @closing = true
+
       $log << "Close called"
 
-      until fibers.empty?
-        fibers.dup.each do |fiber|
-          if fiber.alive?
-            fiber.transfer
-          else
-            fibers.delete(fiber)
-          end
-        end
-      end
+      transfer until fibers.empty?
+
+      created_in_fiber.transfer
     end
   end
 
   include FiberSchedulerInterface
 
-  attr_accessor :fibers
+  attr_accessor :fibers, :blocked, :blocked_until, :created_in_fiber, :fibers_index, :scheduler_thread
 
   def initialize
-    self.fibers = []
+    self.created_in_fiber = Fiber.current
+    self.fibers = [created_in_fiber]
+    self.fibers_index = 0
+    self.blocked = []
+    self.blocked_until = {}
+    self.scheduler_thread = Thread.current
+
     $log << "scheduler created in #{Fiber.current}"
   end
+
+  def transfer
+    until fibers.empty?
+      self.fibers_index += 1
+      self.fibers_index %= fibers.size
+
+      fiber = fibers[fibers_index]
+
+      unless fiber.alive?
+        fibers.delete(fiber)
+        self.fibers_index -= 1
+        next
+      end
+
+      next if blocked.include?(fiber)
+
+      if closing? && fiber == created_in_fiber
+        fibers.delete(fiber)
+        self.fibers_index -= 1
+        next
+      end
+
+      if blocked_until.key?(fiber)
+        if blocked_until[fiber] >= Time.now
+          next
+        else
+          blocked_until.delete(fiber)
+        end
+      end
+
+      fiber.transfer
+
+      return
+    end
+
+    created_in_fiber.transfer
+  end
+
+  def closing? = @closing
 end
 
 class Integer
